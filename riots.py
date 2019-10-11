@@ -15,7 +15,7 @@ from mdx_gfm import GithubFlavoredMarkdownExtension
 
 # Older releases aren't identified as proper 'releases' in github. The tarballs
 # were provided by New Vector from their archives (and uploaded directly into
-# S3 manually). Because the dump of tarball releases from New Vector doesn't 
+# S3 manually). Because the dump of tarball releases from New Vector doesn't
 # map precisely onto the meta persisted in github.com/vector-im/riot-web/releases
 # (i.e. there is not an archived tarball for every tag in github), I have lazily
 # recreated the relevant meta here manually.
@@ -112,16 +112,18 @@ OLDER_RELEASES = [
     }
 ]
 
+
 def compare_version_strings(a, b):
     a = [int(x) for x in a.split('.')]
     b = [int(x) for x in b.split('.')]
 
-    for i in range(len(max(a,b))):
+    for i in range(len(max(a, b))):
         a_part = a[i] if len(a) > i else 0
         b_part = b[i] if len(b) > i else 0
         if a_part != b_part:
             return (a_part > b_part) - (a_part < b_part)
     return 0
+
 
 def get_releases(owner, repo, token):
     url = 'https://api.github.com/repos/%s/%s/releases' % (owner, repo)
@@ -137,6 +139,7 @@ def get_releases(owner, repo, token):
 
     return releases
 
+
 def get_download_link(release, extension='.tar.gz'):
     tar_gzs = [asset for asset in release.get('assets')
                if asset.get('name').endswith(extension)]
@@ -145,8 +148,10 @@ def get_download_link(release, extension='.tar.gz'):
     else:
         return tar_gzs[0].get('browser_download_url', None)
 
+
 def get_name(release):
     return release.get('tag_name')[1:]
+
 
 def is_version_uploaded(bucket, version):
     try:
@@ -160,17 +165,18 @@ def is_version_uploaded(bucket, version):
             return False
     return True
 
+
 def index(releases, bucket, older_releases=None):
     with open('site/index.mustache', 'r') as f:
         template = f.read()
 
     released = [
-            {'name': release.get('name')[1:],
-             'body': markdown(release.get('body'), extensions=[GithubFlavoredMarkdownExtension()]) if release.get('body') else '',
-             'date': release.get('created_at')[:10]}
-            for release in releases
-            if is_version_uploaded(bucket, get_name(release))
-            ]
+        {'name': release.get('name')[1:],
+         'body': markdown(release.get('body'), extensions=[GithubFlavoredMarkdownExtension()]) if release.get('body') else '',
+         'date': release.get('created_at')[:10]}
+        for release in releases
+        if is_version_uploaded(bucket, get_name(release))
+    ]
 
     if older_releases is not None:
         released += older_releases
@@ -179,8 +185,8 @@ def index(releases, bucket, older_releases=None):
     rendered = renderer.render(template, {'releases': released})
 
     bucket.put_object(Key='index.html', Body=rendered,
-            ACL='public-read',
-            ContentType='text/html')
+                      ACL='public-read',
+                      ContentType='text/html')
 
     site_files = [('site/style.css', 'style.css'),
                   ('site/privacy.html', 'privacy.html')]
@@ -204,7 +210,8 @@ def upload(releases, bucket):
         if is_version_uploaded(bucket, name):
             print('%s: already hosted in bucket' % name, file=sys.stderr)
         else:
-            print('%s: not hosted in bucket; fetching...' % name, file=sys.stderr)
+            print('%s: not hosted in bucket; fetching...' %
+                  name, file=sys.stderr)
             download_url = get_download_link(release)
             response = requests.get(download_url)
             os.makedirs('downloads/%s' % name, exist_ok=True)
@@ -213,19 +220,26 @@ def upload(releases, bucket):
                 with open(filename, 'wb') as download:
                     for chunk in response.iter_content(chunk_size=128):
                         download.write(chunk)
-            print('%s: tarball downloaded; exploding...' % name, file=sys.stderr)
+            print('%s: tarball downloaded; exploding...' %
+                  name, file=sys.stderr)
             os.makedirs('exploded/%s' % name, exist_ok=True)
-            subprocess.call(['tar', '-zxf', filename, '-C', 'exploded/%s/' % name])
-            tar_root = 'exploded/%s/%s' % (name, os.listdir('exploded/%s/' % name)[0])
+            subprocess.call(
+                ['tar', '-zxf', filename, '-C', 'exploded/%s/' % name])
+            tar_root = 'exploded/%s/%s' % (name,
+                                           os.listdir('exploded/%s/' % name)[0])
 
             if name != '0.9.0':
-                print('%s: tarball exploded; copying default config...' % name, file=sys.stderr)
-                shutil.copyfile(tar_root + '/config.sample.json', tar_root + '/config.json')
+                print('%s: tarball exploded; copying default config...' %
+                      name, file=sys.stderr)
+                shutil.copyfile(tar_root + '/config.sample.json',
+                                tar_root + '/config.json')
             else:
-                print('%s: tarball exploded; patching in a config file for 0.9.0, released without config...' % name, file=sys.stderr)
+                print('%s: tarball exploded; patching in a config file for 0.9.0, released without config...' %
+                      name, file=sys.stderr)
                 shutil.copyfile('config.0.9.0.json', tar_root + '/config.json')
 
-            print('%s: config inserted; uploading to s3...' % name, file=sys.stderr)
+            print('%s: config inserted; uploading to s3...' %
+                  name, file=sys.stderr)
 
             for subdir, dirs, files in os.walk(tar_root):
                 for file in files:
@@ -235,18 +249,20 @@ def upload(releases, bucket):
                         mime_type = mimetypes.guess_type(full_path)[0]
                         if not mime_type:
                             mime_type = 'application/octet-stream'
-                        print('Putting %s (%s)' % (destination_path, mime_type))
+                        print('Putting %s (%s)' %
+                              (destination_path, mime_type))
                         bucket.put_object(Key=destination_path,
                                           Body=data,
                                           ACL='public-read',
                                           ContentType=mime_type)
             # If we don't do this, we can't easily test whether the 'directory' exists in S3
             bucket.put_object(Key='%s/' % name, Body='')
-            print('%s upload complete; now available at https://riots.im/%s' % (name, name))
+            print('%s upload complete; now available at https://riots.im/%s' %
+                  (name, name))
 
 
 def do_the_needful(aws_access_key_id, aws_secret_access_key, aws_bucket,
-        github_token, run_index, run_upload):
+                   github_token, run_index, run_upload):
 
     session = boto3.Session(
         aws_access_key_id=aws_access_key_id,
@@ -265,7 +281,8 @@ def do_the_needful(aws_access_key_id, aws_secret_access_key, aws_bucket,
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Build a static site hosting historic Riot Web instances')
+    parser = argparse.ArgumentParser(
+        description='Build a static site hosting historic Riot Web instances')
     parser.add_argument('--index', action="store_true")
     parser.add_argument('--upload', action="store_true")
     parser.add_argument('--aws-access-key-id', required=True)
@@ -283,6 +300,7 @@ if __name__ == '__main__':
         run_upload=args.upload
     )
 
+
 def lambda_handler(who, cares):
     do_the_needful(
         aws_access_key_id=os.environ['aws_access_key_id'],
@@ -297,4 +315,3 @@ def lambda_handler(who, cares):
         'statusCode': 200,
         'body': json.dumps('Hello from Lambda!')
     }
-
